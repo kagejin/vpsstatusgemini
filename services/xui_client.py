@@ -25,13 +25,13 @@ class XUIClient:
         }
         try:
             response = self.session.post(url, data=data, timeout=10)
-                if response.status_code == 200 and response.json().get('success'):
-                    self.logged_in = True
-                    logger.info("Successfully logged into 3x-ui")
-                    return True
-                else:
-                    logger.error(f"Login failed. Status: {response.status_code}, Body: {response.text}")
-                    return False
+            if response.status_code == 200 and response.json().get('success'):
+                self.logged_in = True
+                logger.info("Successfully logged into 3x-ui")
+                return True
+            else:
+                logger.error(f"Login failed. Status: {response.status_code}, Body: {response.text}")
+                return False
         except Exception as e:
             logger.error(f"Error connecting to 3x-ui login: {e}")
             return False
