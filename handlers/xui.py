@@ -2,7 +2,8 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from utils.auth import restricted
 from services.xui_client import XUIClient
-from config import XUI_HOST, XUI_PORT, XUI_USER, XUI_PASS, XUI_ROOT
+from config import XUI_HOST, XUI_PORT, XUI_USER, XUI_PASS, XUI_ROOT, HOME_IP
+import uuid
 
 # Initialize client
 xui_client = XUIClient(XUI_HOST, XUI_PORT, XUI_USER, XUI_PASS, XUI_ROOT)
@@ -44,23 +45,42 @@ async def add_user_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     name = context.args[0]
-    msg = await update.message.reply_text(f"Creating user '{name}'...")
+    msg = await update.message.reply_text(f"Adding user '{name}'...")
     
-    # Auto-assign port? Simple logic for now: Random or let server decide? 
-    # 3x-ui usually needs explicit port.
-    # Let's pick a random port between 10000-60000 for simplicity or ask user.
-    # For now, let's use a random port.
-    import random
-    port = random.randint(10000, 60000)
+    # 1. Find a suitable inbound (prefer vless/vmess)
+    inbounds = xui_client.get_inbounds()
+    target_inbound = None
+    if inbounds:
+        for i in inbounds:
+            if i.get('protocol') in ['vless', 'vmess']:
+                target_inbound = i
+                break
+        if not target_inbound:
+             target_inbound = inbounds[0]
     
-    result = xui_client.add_inbound(name, port)
+    if not target_inbound:
+        await msg.edit_text("❌ No inbounds found. Please create an inbound in the panel first.")
+        return
+
+    inbound_id = target_inbound.get('id')
+    client_uuid = str(uuid.uuid4())
+    
+    # 2. Add client to inbound
+    result = xui_client.add_client(inbound_id, name, client_uuid)
     
     if result['success']:
+        # 3. Generate Link
+        # Use configured HOME_IP or fallback to 'YOUR_IP'
+        host_ip = HOME_IP if HOME_IP else "YOUR_IP"
+        
+        link = xui_client.generate_vless_link(target_inbound, client_uuid, name, host_ip)
+        
         await msg.edit_text(
-            f"✅ User <b>{name}</b> created!\n"
-            f"Port: {port}\n"
-            f"UUID: <code>{result.get('uuid')}</code>\n\n"
-            f"<i>Link generation not implemented in V1</i>",
+            f"✅ User <b>{name}</b> added to Inbound {inbound_id}!\n"
+            f"UUID: <code>{client_uuid}</code>\n\n"
+            f"🔗 <b>Link:</b>\n<code>{link}</code>\n\n"
+            f"<i>Link generated using IP: {host_ip}</i>\n"
+            f"<i>(Set HOME_IP in .env to fix IP)</i>",
             parse_mode='HTML'
         )
     else:
