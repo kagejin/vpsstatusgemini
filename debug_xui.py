@@ -10,6 +10,9 @@ XUI_USER = os.getenv("XUI_USERNAME", "admin")
 XUI_PASS = os.getenv("XUI_PASSWORD", "admin")
 XUI_ROOT = os.getenv("XUI_ROOT", "")
 
+print(f"DEBUG: Read XUI_ROOT='{XUI_ROOT}'")
+print(f"DEBUG: Read XUI_PORT='{XUI_PORT}'")
+
 # Normalize root path
 root_path = XUI_ROOT.strip()
 if root_path and not root_path.startswith('/'):
