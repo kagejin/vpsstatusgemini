@@ -2,10 +2,10 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from utils.auth import restricted
 from services.xui_client import XUIClient
-from config import XUI_HOST, XUI_PORT, XUI_USER, XUI_PASS
+from config import XUI_HOST, XUI_PORT, XUI_USER, XUI_PASS, XUI_ROOT
 
 # Initialize client
-xui_client = XUIClient(XUI_HOST, XUI_PORT, XUI_USER, XUI_PASS)
+xui_client = XUIClient(XUI_HOST, XUI_PORT, XUI_USER, XUI_PASS, XUI_ROOT)
 
 @restricted
 async def xui_help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):

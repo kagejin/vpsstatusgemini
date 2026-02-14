@@ -7,8 +7,15 @@ from typing import Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 class XUIClient:
-    def __init__(self, host: str, port: int, username: str, password: str):
+    def __init__(self, host: str, port: int, username: str, password: str, root_path: str = ""):
         self.base_url = f"{host}:{port}"
+        # Normalize root path: ensure it starts with / and has no trailing /
+        self.root_path = root_path.strip()
+        if self.root_path and not self.root_path.startswith('/'):
+            self.root_path = '/' + self.root_path
+        if self.root_path.endswith('/'):
+            self.root_path = self.root_path[:-1]
+            
         self.username = username
         self.password = password
         self.session = requests.Session()
@@ -18,7 +25,7 @@ class XUIClient:
         """
         Authenticates with the 3x-ui panel.
         """
-        url = f"{self.base_url}/login"
+        url = f"{self.base_url}{self.root_path}/login"
         data = {
             "username": self.username,
             "password": self.password
@@ -48,7 +55,7 @@ class XUIClient:
         Retrieves the list of active inbounds.
         """
         self._ensure_login()
-        url = f"{self.base_url}/panel/api/inbounds/list"
+        url = f"{self.base_url}{self.root_path}/panel/api/inbounds/list"
         try:
             response = self.session.get(url, timeout=10)
             if response.status_code == 200:
@@ -74,7 +81,7 @@ class XUIClient:
         Simplified version: creates a basic VLESS/VMESS config.
         """
         self._ensure_login()
-        url = f"{self.base_url}/panel/api/inbounds/add"
+        url = f"{self.base_url}{self.root_path}/panel/api/inbounds/add"
         
         # Basic template for VLESS commonly used
         # Note: In a real scenario, we might need more complex settings struct
@@ -157,7 +164,7 @@ class XUIClient:
         Deletes an inbound by ID.
         """
         self._ensure_login()
-        url = f"{self.base_url}/panel/api/inbounds/del/{inbound_id}"
+        url = f"{self.base_url}{self.root_path}/panel/api/inbounds/del/{inbound_id}"
         try:
             response = self.session.post(url, timeout=10)
             return response.json().get('success', False)

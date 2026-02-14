@@ -10,5 +10,6 @@ XUI_HOST = os.getenv("XUI_HOST", "http://127.0.0.1")
 XUI_PORT = int(os.getenv("XUI_PORT", "2053"))
 XUI_USER = os.getenv("XUI_USERNAME", "admin")
 XUI_PASS = os.getenv("XUI_PASSWORD", "admin")
+XUI_ROOT = os.getenv("XUI_ROOT", "")
 
 HOME_IP = os.getenv("HOME_IP", "")
