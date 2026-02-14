@@ -1,8 +1,8 @@
 from telegram import Update
 from telegram.ext import ContextTypes
-from ..utils.auth import restricted
-from ..services.xui_client import XUIClient
-from ..config import XUI_HOST, XUI_PORT, XUI_USER, XUI_PASS
+from utils.auth import restricted
+from services.xui_client import XUIClient
+from config import XUI_HOST, XUI_PORT, XUI_USER, XUI_PASS
 
 # Initialize client
 xui_client = XUIClient(XUI_HOST, XUI_PORT, XUI_USER, XUI_PASS)

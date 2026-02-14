@@ -1,7 +1,7 @@
 from telegram import Update
 from telegram.ext import ContextTypes
-from ..utils.auth import restricted
-from ..services.system_monitor import ping_host, check_service_status, get_system_stats
+from utils.auth import restricted
+from services.system_monitor import ping_host, check_service_status, get_system_stats
 
 @restricted
 async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):

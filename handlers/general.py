@@ -1,6 +1,6 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes
-from ..utils.auth import restricted
+from utils.auth import restricted
 
 @restricted
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):

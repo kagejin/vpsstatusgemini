@@ -2,7 +2,7 @@ from functools import wraps
 from telegram import Update
 from telegram.ext import ContextTypes
 import logging
-from ..config import ALLOWED_IDS
+from config import ALLOWED_IDS
 
 logger = logging.getLogger(__name__)
 
