@@ -75,89 +75,93 @@ class XUIClient:
             logger.error(f"Error getting inbounds: {e}")
             return []
 
-    def add_inbound(self, remark: str, port: int, protocol: str = "vless") -> Dict:
+    def get_inbound(self, inbound_id: int) -> Optional[Dict]:
         """
-        Adds a new inbound.
-        Simplified version: creates a basic VLESS/VMESS config.
+        Retrieves a specific inbound by ID.
+        """
+        inbounds = self.get_inbounds()
+        for i in inbounds:
+            if i.get('id') == inbound_id:
+                return i
+        return None
+
+    def add_client(self, inbound_id: int, email: str, uuid: str, enable: bool = True) -> Dict:
+        """
+        Adds a client to an existing inbound.
         """
         self._ensure_login()
-        url = f"{self.base_url}{self.root_path}/panel/api/inbounds/add"
+        url = f"{self.base_url}{self.root_path}/panel/api/inbounds/addClient"
         
-        # Basic template for VLESS commonly used
-        # Note: In a real scenario, we might need more complex settings struct
+        # Structure for adding a client
+        # We need to respect the flow of the inbound, but for VLESS Vision it's explicit.
+        # Ideally we fetch the inbound first to get the flow, but that's an extra call.
+        # Let's assume standard X-UI structure.
+        
         settings = {
             "clients": [
                 {
-                    "id": "", # Generate UUID? Server usually does it or we need to. 
-                    # Let's see if server auto-generates if empty or if we need python uuid
-                    "flow": "xtls-rprx-vision",
-                    "email": f"{remark}@bot"
+                    "id": uuid,
+                    "email": email,
+                    "enable": enable,
+                    "expiryTime": 0,
+                    "limitIp": 0,
+                    "totalGB": 0,
+                    "flow": "xtls-rprx-vision", # Default for Reality, but ideally should match inbound
                 }
-            ],
-            "decryption": "none",
-            "fallbacks": []
+            ]
         }
         
-        # We need a UUID for the client.
-        import uuid
-        client_uuid = str(uuid.uuid4())
-        settings['clients'][0]['id'] = client_uuid
-
         data = {
-            "up": 0,
-            "down": 0,
-            "total": 0,
-            "remark": remark,
-            "enable": True,
-            "expiryTime": 0,
-            "listen": "",
-            "port": port,
-            "protocol": protocol,
-            "settings": json.dumps(settings),
-            "streamSettings": json.dumps({
-                "network": "tcp",
-                "security": "reality",
-                "realitySettings": {
-                    "show": False,
-                    "xver": 0,
-                    "dest": "google.com:443",
-                    "serverNames": ["google.com"],
-                    "privateKey": "", # Server should generate? or we need one. 
-                    # REALITY setup is complex via API if we don't fetch existing settings.
-                    # For simplicity, let's try a simpler protocol or rely on defaults if possible.
-                    # Actually, for add_inbound, it's safer to copy a template or ask user for full config.
-                    # But for this task, I'll assume a standard VLESS-TCP-REALITY or similar.
-                    # Let's default to a simpler VMESS-TCP for stability in testing if REALITY fails,
-                    # or better: Just basic VLESS-TCP without Reality for now to ensure it works, 
-                    # OR trust the server defaults.
-                    
-                    # Correction: Generating valid settings from scratch is hard. 
-                    # Better approach: Just send the minimum and let 3x-ui handle or error out.
-                    "shortIds": [""]
-                }
-            }),
-            "sniffing": json.dumps({
-                "enabled": True,
-                "destOverride": ["http", "tls"]
-            })
+            "id": inbound_id,
+            "settings": json.dumps(settings)
         }
         
-        # ADJUSTMENT: For the sake of this task, I will implement a very basic VLESS config. 
-        # If the user needs specific REALITY/etc configs, that's an advanced feature.
-        # I'll stick to VLESS TCP for now as a baseline.
-       
         try:
             response = self.session.post(url, data=data, timeout=10)
-            logger.info(f"Add inbound response: {response.status_code} - {response.text}")
+            logger.info(f"Add client response: {response.status_code} - {response.text}")
             result = response.json()
             if result.get('success'):
-                logger.info(f"Created inbound {remark} on port {port}")
-                return {"success": True, "uuid": client_uuid, "msg": "Created"}
+                return {"success": True, "msg": "Client added"}
             else:
                 return {"success": False, "msg": result.get('msg', 'Unknown error')}
         except Exception as e:
-            logger.error(f"Error adding inbound: {e}")
+            logger.error(f"Error adding client: {e}")
             return {"success": False, "msg": str(e)}
+
+    def generate_vless_link(self, inbound: Dict, uuid: str, email: str, host_ip: str) -> str:
+        """
+        Generates a VLESS link based on inbound settings.
+        """
+        try:
+            port = inbound['port']
+            stream_settings = json.loads(inbound['streamSettings'])
+            network = stream_settings.get('network', 'tcp')
+            security = stream_settings.get('security', 'none')
+            
+            link = f"vless://{uuid}@{host_ip}:{port}?type={network}&security={security}"
+            
+            # Add reality/tls settings
+            if security == 'reality':
+                reality = stream_settings.get('realitySettings', {})
+                pbk = reality.get('settings', {}).get('publicKey') # MHSanaei structure
+                if not pbk: 
+                    pbk = reality.get('privateKey') # Fallback if structure differs or if we are mistakenly reading private
+                    # Actually typically: realitySettings: { settings: { publicKey: ... }, ... }
+                    # Or direct fields dependent on version. 
+                    # Let's try to find publicKey in realitySettings directly or nested
+                    pbk = reality.get('publicKey') or reality.get('settings', {}).get('publicKey')
+
+                sni = reality.get('serverNames', [''])[0]
+                fp = reality.get('fingerprint', 'chrome')
+                sid = reality.get('shortIds', [''])[0]
+                
+                link += f"&pbk={pbk}&fp={fp}&sni={sni}&sid={sid}&flow=xtls-rprx-vision"
+            
+            link += f"#{email}"
+            return link
+        except Exception as e:
+            logger.error(f"Error generating link: {e}")
+            return f"Error generating link: {e}"
 
     def delete_inbound(self, inbound_id: int) -> bool:
         """
