@@ -2,7 +2,7 @@ import requests
 import logging
 import json
 import os
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -269,3 +269,22 @@ class XUIClient:
         except Exception as e:
             logger.error(f"Error deleting client (Method B): {e}")
             return {"success": False, "msg": str(e)}
+
+    def find_client_by_uuid(self, client_uuid: str) -> Optional[Tuple[Dict, Dict]]:
+        """
+        Finds a client and its inbound by UUID.
+        Returns (inbound, client) tuple or None.
+        """
+        self._ensure_login()
+        inbounds = self.get_inbounds()
+        
+        for inbound in inbounds:
+            try:
+                settings = json.loads(inbound.get('settings', '{}'))
+                clients = settings.get('clients', [])
+                for client in clients:
+                    if client.get('id') == client_uuid:
+                        return inbound, client
+            except Exception:
+                continue
+        return None

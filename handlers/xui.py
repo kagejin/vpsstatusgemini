@@ -57,19 +57,16 @@ async def list_users_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 down = client.get('down', 0)
                 usage_str = bytes_to_readable(up + down)
                 
-                # Generate Link
-                host_ip = HOME_IP if HOME_IP else "YOUR_IP"
-                link = xui_client.generate_vless_link(inbound, uuid_str, email, host_ip)
-                
                 # Escape all dynamic data for HTML
                 import html
                 escaped_email = html.escape(email)
-                escaped_link = html.escape(link)
                 escaped_usage = html.escape(usage_str)
                 
-                text += f"{status} <b>{escaped_email}</b> (ID: {inbound.get('id')})\n"
-                text += f"📊 Usage: {escaped_usage}\n"
-                text += f"🔗 Link: <code>{escaped_link}</code>\n\n"
+                # Format: Name | Usage | Status
+                # Action: /link_{uuid}
+                text += f"{status} <b>{escaped_email}</b>\n"
+                text += f"📊 {escaped_usage} | ID: {inbound.get('id')}\n"
+                text += f"🔗 Get Link: /link_{uuid_str}\n\n"
                 
         except Exception as e:
             logger.error(f"Error parsing inbound {inbound.get('id')}: {e}")
@@ -77,11 +74,51 @@ async def list_users_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not found_users:
         text = "No clients found in any inbound."
         
-    # Telegram message limit check (rough)
+    # Telegram message limit check
     if len(text) > 4000:
         text = text[:4000] + "\n... (truncated)"
 
     await msg.edit_text(text, parse_mode='HTML')
+
+@restricted
+async def get_user_link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handles /link_<uuid> commands to fetch VLESS link on demand.
+    """
+    try:
+        command = update.message.text
+        # Format: /link_UUID
+        if not command.startswith("/link_"):
+            return
+            
+        uuid_str = command.split("/link_")[1].strip()
+        
+        msg = await update.message.reply_text("Fetching link...")
+        
+        result = xui_client.find_client_by_uuid(uuid_str)
+        if not result:
+            await msg.edit_text("❌ Client not found.")
+            return
+            
+        inbound, client = result
+        email = client.get('email', 'No Name')
+        
+        # Generate Link
+        host_ip = HOME_IP if HOME_IP else "YOUR_IP"
+        link = xui_client.generate_vless_link(inbound, uuid_str, email, host_ip)
+        
+        import html
+        escaped_link = html.escape(link)
+        
+        await msg.edit_text(
+            f"🔗 <b>Link for {email}:</b>\n\n"
+            f"<code>{escaped_link}</code>",
+            parse_mode='HTML'
+        )
+        
+    except Exception as e:
+        logger.error(f"Error generating link: {e}")
+        await update.message.reply_text("❌ Error generating link.")
 
 @restricted
 async def add_user_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
