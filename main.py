@@ -20,13 +20,40 @@ def main():
     application.add_handler(CommandHandler("help", help_command))
     
     # System
-    application.add_handler(CommandHandler("ping", ping_command))
-    application.add_handler(MessageHandler(filters.Regex("^🖥 System Status$"), system_status_handler))
+    # Conversation Handler for Ping
+    from telegram.ext import ConversationHandler
+    PING_STATE = 1
     
-    async def ping_prompt(update, context):
-        await update.message.reply_text("To ping a host, send:\n`/ping <address>`", parse_mode='Markdown')
-        
-    application.add_handler(MessageHandler(filters.Regex("^🏓 Ping$"), ping_prompt))
+    async def start_ping(update, context):
+        await update.message.reply_text("Please enter the IP address or Hostname to ping:", parse_mode='Markdown')
+        return PING_STATE
+
+    async def handle_ping_input(update, context):
+        ip = update.message.text
+        msg = await update.message.reply_text(f"Pinging {ip} (10 packets)... please wait.")
+        # Run ping with count=10
+        from services.system_monitor import ping_host
+        result = ping_host(ip, count=10)
+        await msg.edit_text(result)
+        return ConversationHandler.END
+
+    async def cancel_ping(update, context):
+        await update.message.reply_text("Ping cancelled.")
+        return ConversationHandler.END
+
+    ping_conv_handler = ConversationHandler(
+        entry_points=[
+            MessageHandler(filters.Regex("^🏓 Ping$"), start_ping),
+            CommandHandler("ping", start_ping) # Also allow /ping to start flow
+        ],
+        states={
+            PING_STATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_ping_input)]
+        },
+        fallbacks=[CommandHandler("cancel", cancel_ping)]
+    )
+
+    application.add_handler(ping_conv_handler)
+    application.add_handler(MessageHandler(filters.Regex("^🖥 System Status$"), system_status_handler))
     
     # X-UI
     # X-UI

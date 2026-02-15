@@ -61,9 +61,13 @@ async def list_users_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 host_ip = HOME_IP if HOME_IP else "YOUR_IP"
                 link = xui_client.generate_vless_link(inbound, uuid_str, email, host_ip)
                 
+                # Escape link for HTML
+                import html
+                escaped_link = html.escape(link)
+                
                 text += f"{status} <b>{email}</b> (ID: {inbound.get('id')})\n"
                 text += f"📊 Usage: {usage_str}\n"
-                text += f"🔗 Link: <code>{link}</code>\n\n"
+                text += f"🔗 Link: <code>{escaped_link}</code>\n\n"
                 
         except Exception as e:
             logger.error(f"Error parsing inbound {inbound.get('id')}: {e}")
@@ -128,19 +132,15 @@ async def add_user_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @restricted
 async def del_user_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
-        await update.message.reply_text("Usage: /del <id>")
+        await update.message.reply_text("Usage: /del <uuid>")
         return
     
-    try:
-        inbound_id = int(context.args[0])
-    except ValueError:
-        await update.message.reply_text("ID must be a number.")
-        return
+    client_uuid = context.args[0]
         
-    msg = await update.message.reply_text(f"Deleting ID {inbound_id}...")
-    success = xui_client.delete_inbound(inbound_id)
+    msg = await update.message.reply_text(f"Deleting user with UUID {client_uuid}...")
+    result = xui_client.delete_client_by_uuid(client_uuid)
     
-    if success:
-        await msg.edit_text(f"✅ Inbound {inbound_id} deleted.")
+    if result['success']:
+        await msg.edit_text(f"✅ User deleted successfully.")
     else:
-        await msg.edit_text("❌ Failed to delete. Check ID or logs.")
+        await msg.edit_text(f"❌ Failed to delete: {result['msg']}")

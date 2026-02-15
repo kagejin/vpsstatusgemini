@@ -3,14 +3,13 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def ping_host(host: str) -> str:
+def ping_host(host: str, count: int = 1) -> str:
     """
     Pings a host and returns the result message.
     """
     try:
-        # -c 1: send 1 packet
         # -W 2: wait up to 2 seconds
-        command = ['ping', '-c', '1', '-W', '2', host]
+        command = ['ping', '-c', str(count), '-W', '2', host]
         result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         
         if result.returncode == 0:
