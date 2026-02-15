@@ -4,7 +4,8 @@ from config import TOKEN
 from utils.logger import setup_logger
 from handlers.general import start, help_command
 from handlers.system import system_status_handler
-from handlers.xui import xui_help_handler, list_users_handler, add_user_handler, del_user_handler, get_user_link_handler
+from handlers.xui import xui_help_handler, list_users_handler, add_user_handler, del_user_handler, xui_callback_handler
+from telegram.ext import CallbackQueryHandler
 
 def main():
     setup_logger()
@@ -80,8 +81,8 @@ def main():
     application.add_handler(CommandHandler("add", add_user_handler))
     application.add_handler(CommandHandler("del", del_user_handler))
     
-    # Link Handler
-    application.add_handler(MessageHandler(filters.Regex(r"^/link_"), get_user_link_handler))
+    # Callback Handler for X-UI Interactive Menu
+    application.add_handler(CallbackQueryHandler(xui_callback_handler))
 
     print("Bot is running...")
     application.run_polling()

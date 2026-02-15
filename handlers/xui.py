@@ -1,10 +1,11 @@
-from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import ContextTypes
+from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.ext import ContextTypes, CallbackQueryHandler
 from utils.auth import restricted
 from services.xui_client import XUIClient
 from config import XUI_HOST, XUI_PORT, XUI_USER, XUI_PASS, XUI_ROOT, HOME_IP
 import uuid
 import json
+import html
 
 # Initialize client
 xui_client = XUIClient(XUI_HOST, XUI_PORT, XUI_USER, XUI_PASS, XUI_ROOT)
@@ -37,88 +38,181 @@ async def list_users_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await msg.edit_text("No users found or connection failed.")
         return
 
-    text = "📂 <b>Active Users:</b>\n\n"
+    keyboard = []
     found_users = False
     
     for inbound in inbounds:
         try:
-            settings_str = inbound.get('settings', '{}')
-            settings = json.loads(settings_str)
+            settings = json.loads(inbound.get('settings', '{}'))
             clients = settings.get('clients', [])
+            
+            # Check for clientStats (3x-ui / MHSanaei often puts stats here)
+            client_stats = {c.get('email'): c for c in inbound.get('clientStats', [])}
             
             for client in clients:
                 found_users = True
                 email = client.get('email', 'No Name')
                 uuid_str = client.get('id')
                 enable = client.get('enable', True)
-                status = "✅" if enable else "🔴"
+                status_icon = "✅" if enable else "🔴"
                 
+                # Check metrics in client object or clientStats
                 up = client.get('up', 0)
                 down = client.get('down', 0)
-                usage_str = bytes_to_readable(up + down)
                 
-                # Escape all dynamic data for HTML
-                import html
-                escaped_email = html.escape(email)
-                escaped_usage = html.escape(usage_str)
+                # If 0, try clientStats
+                if up == 0 and down == 0 and email in client_stats:
+                    stat = client_stats[email]
+                    up = stat.get('up', 0)
+                    down = stat.get('down', 0)
+
+                # Store minimal info in callback data to avoid length limits (or just UUID)
+                # But we need details for the next view. 
+                # Better: Just pass UUID and fetch details again? 
+                # Fetching again is slower but safer for data consistency.
+                # Let's pass "user_detail:<uuid>"
                 
-                # Format: Name | Usage | Status
-                # Action: /link_{uuid}
-                text += f"{status} <b>{escaped_email}</b>\n"
-                text += f"📊 {escaped_usage} | ID: {inbound.get('id')}\n"
-                text += f"🔗 Get Link: /link_{uuid_str}\n\n"
+                button_text = f"{status_icon} {email}"
+                keyboard.append([InlineKeyboardButton(button_text, callback_data=f"xui_u_{uuid_str}")])
                 
         except Exception as e:
             logger.error(f"Error parsing inbound {inbound.get('id')}: {e}")
             
     if not found_users:
-        text = "No clients found in any inbound."
+        await msg.edit_text("No clients found in any inbound.")
+        return
         
-    # Telegram message limit check
-    if len(text) > 4000:
-        text = text[:4000] + "\n... (truncated)"
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await msg.edit_text("📂 <b>Select a User:</b>", reply_markup=reply_markup, parse_mode='HTML')
 
-    await msg.edit_text(text, parse_mode='HTML')
 
-@restricted
-async def get_user_link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Handles /link_<uuid> commands to fetch VLESS link on demand.
-    """
-    try:
-        command = update.message.text
-        # Format: /link_UUID
-        if not command.startswith("/link_"):
-            return
-            
-        uuid_str = command.split("/link_")[1].strip()
-        
-        msg = await update.message.reply_text("Fetching link...")
+async def xui_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    
+    if data.startswith("xui_u_"):
+        # Show User Details
+        uuid_str = data.split("xui_u_")[1]
         
         result = xui_client.find_client_by_uuid(uuid_str)
         if not result:
-            await msg.edit_text("❌ Client not found.")
+            await query.edit_message_text("❌ Client not found (might have been deleted).")
             return
             
         inbound, client = result
         email = client.get('email', 'No Name')
+        enable = client.get('enable', True)
+        status = "Active ✅" if enable else "Disabled 🔴"
         
-        # Generate Link
+        # Traffic Stats
+        up = client.get('up', 0)
+        down = client.get('down', 0)
+        
+        # Try clientStats if 0
+        client_stats = {c.get('email'): c for c in inbound.get('clientStats', [])}
+        if up == 0 and down == 0 and email in client_stats:
+             stat = client_stats[email]
+             up = stat.get('up', 0)
+             down = stat.get('down', 0)
+             
+        total = up + down
+        quota = client.get('totalGB', 0)
+        
+        stats_text = (
+            f"👤 <b>User:</b> {html.escape(email)}\n"
+            f"🆔 <b>UUID:</b> <code>{uuid_str}</code>\n"
+            f"📡 <b>Status:</b> {status}\n\n"
+            f"📊 <b>Traffic Usage:</b>\n"
+            f"   🔼 Upload: {bytes_to_readable(up)}\n"
+            f"   🔽 Download: {bytes_to_readable(down)}\n"
+            f"   🔁 Total: {bytes_to_readable(total)}\n"
+        )
+        
+        if quota > 0:
+             stats_text += f"   ⛔ Quota: {bytes_to_readable(quota)}\n"
+             
+        keyboard = [
+            [InlineKeyboardButton("🔗 Get Link", callback_data=f"xui_l_{uuid_str}")],
+            [InlineKeyboardButton("❌ Delete User", callback_data=f"xui_d_{uuid_str}")],
+            [InlineKeyboardButton("🔙 Back to List", callback_data="xui_list")]
+        ]
+        
+        await query.edit_message_text(stats_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+        
+    elif data.startswith("xui_l_"):
+        # Get Link
+        uuid_str = data.split("xui_l_")[1]
+        result = xui_client.find_client_by_uuid(uuid_str)
+        if not result:
+            await query.message.reply_text("❌ Client not found.")
+            return
+            
+        inbound, client = result
+        email = client.get('email', 'No Name')
         host_ip = HOME_IP if HOME_IP else "YOUR_IP"
-        link = xui_client.generate_vless_link(inbound, uuid_str, email, host_ip)
         
-        import html
+        link = xui_client.generate_vless_link(inbound, uuid_str, email, host_ip)
         escaped_link = html.escape(link)
         
-        await msg.edit_text(
-            f"🔗 <b>Link for {email}:</b>\n\n"
-            f"<code>{escaped_link}</code>",
+        await query.message.reply_text(
+            f"🔗 <b>Link for {html.escape(email)}:</b>\n<code>{escaped_link}</code>",
             parse_mode='HTML'
         )
         
-    except Exception as e:
-        logger.error(f"Error generating link: {e}")
-        await update.message.reply_text("❌ Error generating link.")
+    elif data.startswith("xui_d_"):
+        # Delete User Confirmation or Execution? Let's verify via another click or just do it?
+        # User asked for "Click Delete". Let's do a confirmation step or just delete?
+        # Let's add confirmation: "xui_del_conf_<uuid>"
+        uuid_str = data.split("xui_d_")[1]
+        
+        keyboard = [
+            [InlineKeyboardButton("✅ Yes, Delete", callback_data=f"xui_dc_{uuid_str}")],
+            [InlineKeyboardButton("🚫 Cancel", callback_data=f"xui_u_{uuid_str}")]
+        ]
+        await query.edit_message_text("❓ <b>Are you sure you want to delete this user?</b>", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+
+    elif data.startswith("xui_dc_"):
+        # Confirmed Delete
+        uuid_str = data.split("xui_dc_")[1]
+        
+        await query.edit_message_text("⏳ Deleting...")
+        result = xui_client.delete_client_by_uuid(uuid_str)
+        
+        if result['success']:
+            await query.edit_message_text("✅ User deleted successfully.")
+            # Optional: Redirect back to list?
+        else:
+            await query.edit_message_text(f"❌ Failed to delete: {result['msg']}")
+            
+    elif data == "xui_list":
+        # Back to List - re-run list handler logic locally
+        # We can't call list_users_handler directly easily because it expects Update/Context in specific way?
+        # Or we can just reuse the logic. Let's reuse logic by abstracting or copy-pasting for safety in one tool call.
+        # Ideally, separate function `get_users_keyboard`.
+        # For now, just re-fetch.
+        
+        inbounds = xui_client.get_inbounds()
+        if not inbounds:
+             await query.edit_message_text("No users found.")
+             return
+
+        keyboard = []
+        for inbound in inbounds:
+            try:
+                settings = json.loads(inbound.get('settings', '{}'))
+                clients = settings.get('clients', [])
+                for client in clients:
+                    email = client.get('email', 'No Name')
+                    uuid_str = client.get('id')
+                    enable = client.get('enable', True)
+                    status_icon = "✅" if enable else "🔴"
+                    keyboard.append([InlineKeyboardButton(f"{status_icon} {email}", callback_data=f"xui_u_{uuid_str}")])
+            except: pass
+            
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text("📂 <b>Select a User:</b>", reply_markup=reply_markup, parse_mode='HTML')
 
 @restricted
 async def add_user_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -151,23 +245,21 @@ async def add_user_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     result = xui_client.add_client(inbound_id, name, client_uuid)
     
     if result['success']:
-        # 3. Generate Link
-        # Use configured HOME_IP or fallback to 'YOUR_IP'
         host_ip = HOME_IP if HOME_IP else "YOUR_IP"
-        
         link = xui_client.generate_vless_link(target_inbound, client_uuid, name, host_ip)
+        import html
+        escaped_link = html.escape(link)
         
         await msg.edit_text(
-            f"✅ User <b>{name}</b> added to Inbound {inbound_id}!\n"
+            f"✅ User <b>{html.escape(name)}</b> added!\n"
             f"UUID: <code>{client_uuid}</code>\n\n"
-            f"🔗 <b>Link:</b>\n<code>{link}</code>\n\n"
-            f"<i>Link generated using IP: {host_ip}</i>\n"
-            f"<i>(Set HOME_IP in .env to fix IP)</i>",
+            f"🔗 <b>Link:</b>\n<code>{escaped_link}</code>",
             parse_mode='HTML'
         )
     else:
         await msg.edit_text(f"❌ Failed: {result['msg']}")
 
+# Delete Handler not really needed via command if UI exists, but keep for legacy/scripts
 @restricted
 async def del_user_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
@@ -175,11 +267,10 @@ async def del_user_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     client_uuid = context.args[0]
-        
-    msg = await update.message.reply_text(f"Deleting user with UUID {client_uuid}...")
+    msg = await update.message.reply_text(f"Deleting user {client_uuid}...")
     result = xui_client.delete_client_by_uuid(client_uuid)
     
     if result['success']:
         await msg.edit_text(f"✅ User deleted successfully.")
     else:
-        await msg.edit_text(f"❌ Failed to delete: {result['msg']}")
+        await msg.edit_text(f"❌ Failed: {result['msg']}")
