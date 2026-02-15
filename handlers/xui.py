@@ -1,23 +1,32 @@
-from telegram import Update
+from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes
 from utils.auth import restricted
 from services.xui_client import XUIClient
 from config import XUI_HOST, XUI_PORT, XUI_USER, XUI_PASS, XUI_ROOT, HOME_IP
 import uuid
+import json
 
 # Initialize client
 xui_client = XUIClient(XUI_HOST, XUI_PORT, XUI_USER, XUI_PASS, XUI_ROOT)
 
 @restricted
 async def xui_help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = (
-        "⚡ <b>X-UI Management</b>\n\n"
-        "<b>Commands:</b>\n"
-        "/users - List all active users\n"
-        "/add &lt;name&gt; - Add new VLESS user\n"
-        "/del &lt;id&gt; - Delete user by Inbound ID\n"
-    )
-    await update.message.reply_text(msg, parse_mode='HTML')
+    keyboard = [
+        ["👥 List Users", "➕ Add User"],
+        ["❌ Delete User", "🔙 Back"]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    await update.message.reply_text("⚡ <b>X-UI Management Panel</b>\nSelect an action:", reply_markup=reply_markup, parse_mode='HTML')
+
+import logging
+logger = logging.getLogger(__name__)
+
+def bytes_to_readable(bytes_val):
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if bytes_val < 1024:
+            return f"{bytes_val:.2f} {unit}"
+        bytes_val /= 1024
+    return f"{bytes_val:.2f} PB"
 
 @restricted
 async def list_users_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -29,13 +38,43 @@ async def list_users_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
 
     text = "📂 <b>Active Users:</b>\n\n"
-    for i in inbounds:
-        # 3x-ui inbound structure varies, usually 'id' is DB ID, 'remark' is name
-        # 'settings' has the UUID.
-        # We display DB ID for deletion usage.
-        text += f"🆔 <b>{i.get('id')}</b> | 👤 <b>{i.get('remark')}</b>\n"
-        text += f"   Port: {i.get('port')} | Protocol: {i.get('protocol')}\n\n"
+    found_users = False
+    
+    for inbound in inbounds:
+        try:
+            settings_str = inbound.get('settings', '{}')
+            settings = json.loads(settings_str)
+            clients = settings.get('clients', [])
+            
+            for client in clients:
+                found_users = True
+                email = client.get('email', 'No Name')
+                uuid_str = client.get('id')
+                enable = client.get('enable', True)
+                status = "✅" if enable else "🔴"
+                
+                up = client.get('up', 0)
+                down = client.get('down', 0)
+                usage_str = bytes_to_readable(up + down)
+                
+                # Generate Link
+                host_ip = HOME_IP if HOME_IP else "YOUR_IP"
+                link = xui_client.generate_vless_link(inbound, uuid_str, email, host_ip)
+                
+                text += f"{status} <b>{email}</b> (ID: {inbound.get('id')})\n"
+                text += f"📊 Usage: {usage_str}\n"
+                text += f"🔗 Link: <code>{link}</code>\n\n"
+                
+        except Exception as e:
+            logger.error(f"Error parsing inbound {inbound.get('id')}: {e}")
+            
+    if not found_users:
+        text = "No clients found in any inbound."
         
+    # Telegram message limit check (rough)
+    if len(text) > 4000:
+        text = text[:4000] + "\n... (truncated)"
+
     await msg.edit_text(text, parse_mode='HTML')
 
 @restricted

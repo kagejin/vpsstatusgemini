@@ -14,9 +14,9 @@ def ping_host(host: str) -> str:
         result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         
         if result.returncode == 0:
-            return f"✅ Ping to {host} successful!\n{result.stdout.splitlines()[-1]}"
+            return f"✅ Ping to {host} successful!\n\n{result.stdout}"
         else:
-            return f"❌ Ping to {host} failed."
+            return f"❌ Ping to {host} failed.\n\n{result.stderr}"
     except Exception as e:
         logger.error(f"Error pinging {host}: {e}")
         return f"⚠️ Error executing ping command: {e}"
@@ -37,17 +37,19 @@ def check_service_status(service_name: str) -> bool:
 
 def get_system_stats() -> str:
     """
-    Returns a formatted string of system stats (CPU, RAM).
+    Returns a formatted string of system stats (CPU, RAM, Disk).
     """
     try:
         import psutil
         cpu_usage = psutil.cpu_percent(interval=1)
         ram = psutil.virtual_memory()
+        disk = psutil.disk_usage('/')
         
         return (
             f"💻 **System Stats**:\n"
             f"CPU: {cpu_usage}%\n"
-            f"RAM: {ram.percent}% ({ram.used // (1024*1024)}MB / {ram.total // (1024*1024)}MB)"
+            f"RAM: {ram.percent}% ({ram.used // (1024*1024)}MB / {ram.total // (1024*1024)}MB)\n"
+            f"Disk: {disk.percent}% ({disk.used // (1024*1024*1024)}GB / {disk.total // (1024*1024*1024)}GB)"
         )
     except ImportError:
         return "psutil not installed, cannot retrieve stats."

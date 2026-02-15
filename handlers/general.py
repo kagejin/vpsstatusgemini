@@ -6,7 +6,7 @@ from utils.auth import restricted
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         ["🖥 System Status", "⚡ X-UI Panel"],
-        ["🏓 Ping Home", "❓ Help"]
+        ["🏓 Ping", "❓ Help"]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     await update.message.reply_text("🤖 VPS Manager Bot Ready.\nSelect an option:", reply_markup=reply_markup)

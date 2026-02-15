@@ -19,12 +19,12 @@ async def system_status_handler(update: Update, context: ContextTypes.DEFAULT_TY
     stats = get_system_stats()
     
     # Check services
-    services = ["3x-ui", "x-ui", "docker", "ssh"] # customizable
+    services = ["x-ui", "docker", "ssh"] # customizable
     service_status = "\n\n🛠 **Services**:\n"
     for s in services:
         active = check_service_status(s)
         # Only show if active or if it's a primary expected service that is down
-        if active or s in ["3x-ui", "x-ui"]: 
+        if active or s in ["x-ui"]: 
              service_status += f"{'✅' if active else '🔴'} {s}\n"
         
     await update.message.reply_text(stats + service_status, parse_mode='Markdown')
