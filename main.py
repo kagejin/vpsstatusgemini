@@ -52,6 +52,12 @@ def main():
         fallbacks=[CommandHandler("cancel", cancel_ping)]
     )
 
+    async def error_handler(update, context):
+        logger = logging.getLogger(__name__)
+        logger.error(msg="Exception while handling an update:", exc_info=context.error)
+        
+    application.add_error_handler(error_handler)
+
     application.add_handler(ping_conv_handler)
     application.add_handler(MessageHandler(filters.Regex("^🖥 System Status$"), system_status_handler))
     
