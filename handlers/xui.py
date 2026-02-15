@@ -14,7 +14,7 @@ xui_client = XUIClient(XUI_HOST, XUI_PORT, XUI_USER, XUI_PASS, XUI_ROOT)
 async def xui_help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         ["👥 List Users", "➕ Add User"],
-        ["❌ Delete User", "🔙 Back"]
+        ["🔙 Back"]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     await update.message.reply_text("⚡ <b>X-UI Management Panel</b>\nSelect an action:", reply_markup=reply_markup, parse_mode='HTML')
@@ -54,7 +54,7 @@ async def list_users_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 email = client.get('email', 'No Name')
                 uuid_str = client.get('id')
                 enable = client.get('enable', True)
-                status_icon = "✅" if enable else "🔴"
+                status_icon = "🟢" if enable else "🔴"
                 
                 # Check metrics in client object or clientStats
                 up = client.get('up', 0)
@@ -66,12 +66,6 @@ async def list_users_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     up = stat.get('up', 0)
                     down = stat.get('down', 0)
 
-                # Store minimal info in callback data to avoid length limits (or just UUID)
-                # But we need details for the next view. 
-                # Better: Just pass UUID and fetch details again? 
-                # Fetching again is slower but safer for data consistency.
-                # Let's pass "user_detail:<uuid>"
-                
                 button_text = f"{status_icon} {email}"
                 keyboard.append([InlineKeyboardButton(button_text, callback_data=f"xui_u_{uuid_str}")])
                 
@@ -104,7 +98,7 @@ async def xui_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         inbound, client = result
         email = client.get('email', 'No Name')
         enable = client.get('enable', True)
-        status = "Active ✅" if enable else "Disabled 🔴"
+        status = "Active 🟢" if enable else "Disabled 🔴"
         
         # Traffic Stats
         up = client.get('up', 0)
@@ -162,9 +156,7 @@ async def xui_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         )
         
     elif data.startswith("xui_d_"):
-        # Delete User Confirmation or Execution? Let's verify via another click or just do it?
-        # User asked for "Click Delete". Let's do a confirmation step or just delete?
-        # Let's add confirmation: "xui_del_conf_<uuid>"
+        # Delete User Confirmation
         uuid_str = data.split("xui_d_")[1]
         
         keyboard = [
@@ -188,11 +180,6 @@ async def xui_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             
     elif data == "xui_list":
         # Back to List - re-run list handler logic locally
-        # We can't call list_users_handler directly easily because it expects Update/Context in specific way?
-        # Or we can just reuse the logic. Let's reuse logic by abstracting or copy-pasting for safety in one tool call.
-        # Ideally, separate function `get_users_keyboard`.
-        # For now, just re-fetch.
-        
         inbounds = xui_client.get_inbounds()
         if not inbounds:
              await query.edit_message_text("No users found.")
@@ -203,11 +190,14 @@ async def xui_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             try:
                 settings = json.loads(inbound.get('settings', '{}'))
                 clients = settings.get('clients', [])
+                 # Check for clientStats (3x-ui / MHSanaei often puts stats here)
+                client_stats = {c.get('email'): c for c in inbound.get('clientStats', [])}
+
                 for client in clients:
                     email = client.get('email', 'No Name')
                     uuid_str = client.get('id')
                     enable = client.get('enable', True)
-                    status_icon = "✅" if enable else "🔴"
+                    status_icon = "🟢" if enable else "🔴"
                     keyboard.append([InlineKeyboardButton(f"{status_icon} {email}", callback_data=f"xui_u_{uuid_str}")])
             except: pass
             
@@ -256,21 +246,5 @@ async def add_user_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🔗 <b>Link:</b>\n<code>{escaped_link}</code>",
             parse_mode='HTML'
         )
-    else:
-        await msg.edit_text(f"❌ Failed: {result['msg']}")
-
-# Delete Handler not really needed via command if UI exists, but keep for legacy/scripts
-@restricted
-async def del_user_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text("Usage: /del <uuid>")
-        return
-    
-    client_uuid = context.args[0]
-    msg = await update.message.reply_text(f"Deleting user {client_uuid}...")
-    result = xui_client.delete_client_by_uuid(client_uuid)
-    
-    if result['success']:
-        await msg.edit_text(f"✅ User deleted successfully.")
     else:
         await msg.edit_text(f"❌ Failed: {result['msg']}")

@@ -4,7 +4,7 @@ from config import TOKEN
 from utils.logger import setup_logger
 from handlers.general import start, help_command
 from handlers.system import system_status_handler
-from handlers.xui import xui_help_handler, list_users_handler, add_user_handler, del_user_handler, xui_callback_handler
+from handlers.xui import xui_help_handler, list_users_handler, add_user_handler, xui_callback_handler
 from telegram.ext import CallbackQueryHandler
 
 def main():
@@ -71,15 +71,10 @@ def main():
     async def add_prompt(update, context):
         await update.message.reply_text("To add a user, send:\n`/add <name>`", parse_mode='Markdown')
         
-    async def del_prompt(update, context):
-        await update.message.reply_text("To delete a user, send:\n`/del <id>`\n(Find ID in 'List Users')", parse_mode='Markdown')
-
     application.add_handler(MessageHandler(filters.Regex("^➕ Add User$"), add_prompt))
-    application.add_handler(MessageHandler(filters.Regex("^❌ Delete User$"), del_prompt))
 
     application.add_handler(CommandHandler("users", list_users_handler))
     application.add_handler(CommandHandler("add", add_user_handler))
-    application.add_handler(CommandHandler("del", del_user_handler))
     
     # Callback Handler for X-UI Interactive Menu
     application.add_handler(CallbackQueryHandler(xui_callback_handler))
