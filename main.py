@@ -3,7 +3,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, fil
 from config import TOKEN
 from utils.logger import setup_logger
 from handlers.general import start, help_command
-from handlers.system import ping_command, system_status_handler
+from handlers.system import system_status_handler
 from handlers.xui import xui_help_handler, list_users_handler, add_user_handler, del_user_handler
 
 def main():
@@ -13,7 +13,7 @@ def main():
         print("Error: TELEGRAM_BOT_TOKEN not found in .env")
         return
 
-    application = ApplicationBuilder().token(TOKEN).build()
+    application = ApplicationBuilder().token(TOKEN).read_timeout(30).write_timeout(30).connect_timeout(30).build()
 
     # General
     application.add_handler(CommandHandler("start", start))
