@@ -61,12 +61,14 @@ async def list_users_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 host_ip = HOME_IP if HOME_IP else "YOUR_IP"
                 link = xui_client.generate_vless_link(inbound, uuid_str, email, host_ip)
                 
-                # Escape link for HTML
+                # Escape all dynamic data for HTML
                 import html
+                escaped_email = html.escape(email)
                 escaped_link = html.escape(link)
+                escaped_usage = html.escape(usage_str)
                 
-                text += f"{status} <b>{email}</b> (ID: {inbound.get('id')})\n"
-                text += f"📊 Usage: {usage_str}\n"
+                text += f"{status} <b>{escaped_email}</b> (ID: {inbound.get('id')})\n"
+                text += f"📊 Usage: {escaped_usage}\n"
                 text += f"🔗 Link: <code>{escaped_link}</code>\n\n"
                 
         except Exception as e:

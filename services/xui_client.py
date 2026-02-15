@@ -79,11 +79,16 @@ class XUIClient:
         """
         Retrieves a specific inbound by ID.
         """
-        inbounds = self.get_inbounds()
-        for i in inbounds:
-            if i.get('id') == inbound_id:
-                return i
-        return None
+        self._ensure_login()
+        url = f"{self.base_url}{self.root_path}/panel/api/inbounds/get/{inbound_id}"
+        try:
+            response = self.session.get(url, timeout=10)
+            if response.status_code == 200 and response.json().get('success'):
+                return response.json().get('obj')
+            return None
+        except Exception as e:
+            logger.error(f"Error fetching inbound {inbound_id}: {e}")
+            return None
 
     def add_client(self, inbound_id: int, email: str, uuid: str, enable: bool = True) -> Dict:
         """
@@ -207,28 +212,60 @@ class XUIClient:
             return {"success": False, "msg": "Client with this UUID not found."}
             
         # 2. Delete Client
-        # Endpoint: /panel/api/inbounds/updateClient/{client_uuid} ?? No, usually it's specific.
-        # But wait, 3x-ui usually implies: 
-        # /panel/api/inbounds/delClient/{inboundId}/{clientUuid} OR by Email?
-        # Let's try standard X-UI way: update inbound settings sans client? 
-        # Or check if there is a delClient endpoint.
-        # Common endpoint: /panel/api/inbounds/client/del/{inboundId}/{clientUuid} (some versions)
-        # OR POST /panel/api/inbounds/delClient 
-        
-        # Let's try the safest: Update inbound with client removed.
-        # Check if we can use the /delClient endpoint if available, but "Update Inbound" is safer if we know the structure.
-        
-        # ACTUALLY, usually /panel/api/inbounds/delClient/{inboundId}/{clientUuid}
-        
-        url = f"{self.base_url}{self.root_path}/panel/api/inbounds/delClient/{target_inbound_id}/{client_uuid}"
+        # Strategy A: /panel/api/inbounds/delClient/{inboundId}/{clientUuid}
+        url_a = f"{self.base_url}{self.root_path}/panel/api/inbounds/delClient/{target_inbound_id}/{client_uuid}"
         try:
-            response = self.session.post(url, timeout=10)
+            logger.info(f"Attempting delete via {url_a}")
+            response = self.session.post(url_a, timeout=10)
+            logger.info(f"Delete response A: {response.status_code} - {response.text}")
+            
             if response.status_code == 200 and response.json().get('success'):
-                 return {"success": True, "msg": "Client deleted"}
-            else:
-                 # Fallback: try removing from settings and updating inbound
-                 return {"success": False, "msg": f"Failed to delete. API Response: {response.text}"}
-                 
+                 return {"success": True, "msg": "Client deleted (Method A)"}
         except Exception as e:
-            logger.error(f"Error deleting client: {e}")
+            logger.warning(f"Delete Method A failed: {e}")
+
+        # Strategy B: Remove from settings and update inbound
+        # This is the fallback if the specific delete endpoint doesn't work/exist in this version
+        try:
+            logger.info(f"Attempting delete via Update Inbound (Method B)")
+            # Re-fetch inbound to be sure
+            inbound = self.get_inbound(target_inbound_id) # Need to implement get_inbound or find it again
+            # For now, iterate again or use the one we found if we trust it hasn't changed in sub-second
+            # Let's just use the 'inbound' variable from the loop above? No, it's safer to re-find exactly.
+            
+            # Simple re-find logic from list
+            inbounds = self.get_inbounds()
+            target_inbound = None
+            for i in inbounds:
+                if i.get('id') == target_inbound_id:
+                    target_inbound = i
+                    break
+            
+            if not target_inbound:
+                 return {"success": False, "msg": "Inbound not found for fallback delete."}
+
+            settings = json.loads(target_inbound.get('settings', '{}'))
+            clients = settings.get('clients', [])
+            
+            # Filter out the client
+            new_clients = [c for c in clients if c.get('id') != client_uuid]
+            
+            if len(new_clients) == len(clients):
+                 return {"success": False, "msg": "Client not found in inbound settings."}
+                 
+            settings['clients'] = new_clients
+            target_inbound['settings'] = json.dumps(settings)
+            
+            # Update inbound
+            update_url = f"{self.base_url}{self.root_path}/panel/api/inbounds/update/{target_inbound_id}"
+            resp = self.session.post(update_url, json=target_inbound, timeout=10)
+            logger.info(f"Delete response B: {resp.status_code} - {resp.text}")
+            
+            if resp.status_code == 200 and resp.json().get('success'):
+                return {"success": True, "msg": "Client deleted (Method B)"}
+            else:
+                return {"success": False, "msg": f"Failed Method B: {resp.text}"}
+
+        except Exception as e:
+            logger.error(f"Error deleting client (Method B): {e}")
             return {"success": False, "msg": str(e)}
